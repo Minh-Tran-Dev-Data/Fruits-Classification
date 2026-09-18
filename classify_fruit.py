@@ -42,10 +42,6 @@ def extract_all_features(img, mask=None):
 # 3. Xay "ngan hang" dac trung tham chieu tu cac anh mau da biet nhan
 # ---------------------------------------------------------------------------
 def build_reference_db(image_paths_by_label):
-    """
-    image_paths_by_label: dict {'tao': [path1, path2, ...], 'chuoi': [...], ...}
-    Tra ve: db_raw (dict label -> list cac tuple (hsv, hist, stats) tung anh mau)
-    """
     db_raw = {}
     for label, paths in image_paths_by_label.items():
         feats = []
@@ -120,14 +116,6 @@ def build_normalized_db(db_raw, norm_params):
 # 6. HAM PHAN LOAI CHINH - so anh moi voi tung anh mau, chon nhan gan nhat (KNN)
 # ---------------------------------------------------------------------------
 def classify_fruit(img, db_norm, norm_params, mask=None, k=3):
-    """
-    img: anh RGB can phan loai
-    db_norm: ket qua tu build_normalized_db
-    norm_params: ket qua tu compute_normalization_stats
-    k: so lang gieng gan nhat dung de "vote" (KNN)
-
-    Tra ve: nhan du doan, do tin cay (0-1), bang khoang cach trung binh toi tung loai
-    """
     if mask is None:
         mask = auto_mask(img)
 
@@ -169,17 +157,6 @@ def classify_fruit(img, db_norm, norm_params, mask=None, k=3):
 #    thu_muc/ten_loai/anh.jpg
 # ---------------------------------------------------------------------------
 def build_pipeline_from_folder(root_folder, max_images_per_class=None):
-    """
-    root_folder co cau truc:
-        root_folder/
-            Apple/
-                img1.jpg
-                img2.jpg
-            Banana/
-                img1.jpg
-                ...
-    Tra ve: db_norm, norm_params (dung truc tiep cho classify_fruit)
-    """
     valid_ext = (".jpg", ".jpeg", ".png", ".bmp")
     image_paths_by_label = {}
     for label in sorted(os.listdir(root_folder)):

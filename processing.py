@@ -196,3 +196,183 @@ def compare_stats(img1, img2, mask1=None, mask2=None):
         print(f"{name:<12}{v1:>10.2f}{v2:>10.2f}")
 
     return stats1, stats2
+
+
+## ---------------------------------------------------------------------
+## GHEP 3 KY THUAT + PHAN LOAI
+## ---------------------------------------------------------------------
+import os
+from collections import Counter
+
+
+def auto_mask(img, s_thresh=30, v_thresh=200):
+    hsv, h, s, v = hsv_procession(img)
+    mask_nen = cv2.inRange(hsv, (0, 0, v_thresh), (179, s_thresh, 255))
+    mask = cv2.bitwise_not(mask_nen)
+
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
+    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
+    return mask
+
+
+def extract_all_features(img, mask=None):
+    if mask is None:
+        mask = auto_mask(img)
+
+    feat_hsv = extract_hsv(img, mask=mask)
+    feat_hist = extract_histogram(img, mask=mask)
+    feat_stats = extract_stats(img, mask=mask)
+    return feat_hsv, feat_hist, feat_stats
+
+
+def build_reference_db(image_paths_by_label):
+    db_raw = {}
+    for label, paths in image_paths_by_label.items():
+        entries = []
+        for p in paths:
+            img_bgr = cv2.imread(p)
+            if img_bgr is None:
+                print(f"[Canh bao] Khong doc duoc anh: {p}")
+                continue
+            img = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
+            f_hsv, f_hist, f_stats = extract_all_features(img)
+            entries.append({"path": p, "hsv": f_hsv, "hist": f_hist, "stats": f_stats})
+        db_raw[label] = entries
+    return db_raw
+
+
+def compute_normalization_stats(db_raw):
+    all_hsv, all_hist, all_stats = [], [], []
+    for entries in db_raw.values():
+        for e in entries:
+            all_hsv.append(e["hsv"])
+            all_hist.append(e["hist"])
+            all_stats.append(e["stats"])
+
+    all_hsv = np.array(all_hsv)
+    all_hist = np.array(all_hist)
+    all_stats = np.array(all_stats)
+    hist_std = np.maximum(all_hist.std(axis=0), 0.01)
+
+    return {
+        "hsv_mean": all_hsv.mean(axis=0), "hsv_std": all_hsv.std(axis=0) + 1e-6,
+        "hist_mean": all_hist.mean(axis=0), "hist_std": hist_std,
+        "stats_mean": all_stats.mean(axis=0), "stats_std": all_stats.std(axis=0) + 1e-6,
+        # luu lai so chieu tung phan de sau nay tach vector ra giai thich duoc
+        "n_hsv": all_hsv.shape[1], "n_hist": all_hist.shape[1], "n_stats": all_stats.shape[1],
+    }
+
+
+def _zscore(x, mean, std, clip=5.0):
+    z = (x - mean) / std
+    return np.clip(z, -clip, clip)
+
+
+def build_normalized_db(db_raw, norm_params):
+    db_norm = {}
+    for label, entries in db_raw.items():
+        items = []
+        for e in entries:
+            v_hsv = _zscore(e["hsv"], norm_params["hsv_mean"], norm_params["hsv_std"])
+            v_hist = _zscore(e["hist"], norm_params["hist_mean"], norm_params["hist_std"])
+            v_stats = _zscore(e["stats"], norm_params["stats_mean"], norm_params["stats_std"])
+            vector = np.concatenate([v_hsv, v_hist, v_stats])
+            items.append({"path": e["path"], "vector": vector})
+        db_norm[label] = items
+    return db_norm
+
+
+def _feat_test_vector(img, norm_params, mask=None):
+    f_hsv, f_hist, f_stats = extract_all_features(img, mask=mask)
+    v_hsv = _zscore(f_hsv, norm_params["hsv_mean"], norm_params["hsv_std"])
+    v_hist = _zscore(f_hist, norm_params["hist_mean"], norm_params["hist_std"])
+    v_stats = _zscore(f_stats, norm_params["stats_mean"], norm_params["stats_std"])
+    return np.concatenate([v_hsv, v_hist, v_stats])
+
+
+def classify_fruit(img, db_norm, norm_params, mask=None, k=3):
+    if mask is None:
+        mask = auto_mask(img)
+    feat_test = _feat_test_vector(img, norm_params, mask=mask)
+
+    all_dists = []
+    for label, items in db_norm.items():
+        for item in items:
+            dist = np.linalg.norm(feat_test - item["vector"])
+            all_dists.append((label, dist))
+
+    all_dists.sort(key=lambda x: x[1])
+    top_k = all_dists[:k]
+
+    votes = Counter(label for label, _ in top_k)
+    best_label = votes.most_common(1)[0][0]
+    confidence = votes[best_label] / k
+
+    label_avg_dist = {
+        label: float(np.mean([d for lb, d in all_dists if lb == label]))
+        for label in db_norm
+    }
+    return best_label, confidence, label_avg_dist
+
+
+def classify_fruit_detailed(img, db_norm, norm_params, mask=None, k=3):
+    if mask is None:
+        mask = auto_mask(img)
+    feat_test = _feat_test_vector(img, norm_params, mask=mask)
+
+    n_hsv = norm_params["n_hsv"]
+    n_hist = norm_params["n_hist"]
+
+    all_matches = []
+    for label, items in db_norm.items():
+        for item in items:
+            v = item["vector"]
+            dist = float(np.linalg.norm(feat_test - v))
+            all_matches.append({"label": label, "path": item["path"], "dist": dist, "vector": v})
+
+    all_matches.sort(key=lambda x: x["dist"])
+    top_k = all_matches[:k]
+
+    votes = Counter(m["label"] for m in top_k)
+    best_label = votes.most_common(1)[0][0]
+    confidence = votes[best_label] / k
+
+    label_avg_dist = {
+        label: float(np.mean([m["dist"] for m in all_matches if m["label"] == label]))
+        for label in db_norm
+    }
+
+    nearest = all_matches[0]
+    v_near = nearest["vector"]
+    d_hsv = float(np.linalg.norm(feat_test[:n_hsv] - v_near[:n_hsv]))
+    d_hist = float(np.linalg.norm(feat_test[n_hsv:n_hsv + n_hist] - v_near[n_hsv:n_hsv + n_hist]))
+    d_stats = float(np.linalg.norm(feat_test[n_hsv + n_hist:] - v_near[n_hsv + n_hist:]))
+
+    detail = {
+        "nearest_path": nearest["path"],
+        "nearest_label": nearest["label"],
+        "nearest_total_dist": nearest["dist"],
+        "breakdown": {"hsv": d_hsv, "hist": d_hist, "stats": d_stats},
+        "top_k": [{"label": m["label"], "path": m["path"], "dist": m["dist"]} for m in top_k],
+    }
+    return best_label, confidence, label_avg_dist, detail
+
+
+def build_pipeline_from_folder(root_folder, max_images_per_class=None):
+    valid_ext = (".jpg", ".jpeg", ".png", ".bmp")
+    image_paths_by_label = {}
+    for label in sorted(os.listdir(root_folder)):
+        label_dir = os.path.join(root_folder, label)
+        if not os.path.isdir(label_dir):
+            continue
+        files = [os.path.join(label_dir, f) for f in sorted(os.listdir(label_dir))
+                  if f.lower().endswith(valid_ext)]
+        if max_images_per_class:
+            files = files[:max_images_per_class]
+        image_paths_by_label[label] = files
+
+    db_raw = build_reference_db(image_paths_by_label)
+    norm_params = compute_normalization_stats(db_raw)
+    db_norm = build_normalized_db(db_raw, norm_params)
+    return db_norm, norm_params
