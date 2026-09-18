@@ -28,9 +28,9 @@ def extract_hsv(img, mask=None):
     mean_h, std_h = cv2.meanStdDev(h, mask=mask)
     mean_s, std_s = cv2.meanStdDev(s, mask=mask)
     mean_v, std_v = cv2.meanStdDev(v, mask=mask)
-    features = [float(mean_h), float(std_h),
-                float(mean_s), float(std_s),
-                float(mean_v), float(std_v)]
+    features = [float(mean_h.flatten()[0]), float(std_h.flatten()[0]),
+                float(mean_s.flatten()[0]), float(std_s.flatten()[0]),
+                float(mean_v.flatten()[0]), float(std_v.flatten()[0])]
     return np.array(features, dtype=np.float32)
 def compare_hsv (img1,img2):
     hsv_rgb = cv2.cvtColor(img2,cv2.COLOR_HSV2RGB)
