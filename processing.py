@@ -202,10 +202,14 @@ def compare_stats(img1, img2, mask1=None, mask2=None):
 ## GHEP 3 KY THUAT + PHAN LOAI
 ## ---------------------------------------------------------------------
 import os
-from collections import Counter
 
 
 def auto_mask(img, s_thresh=30, v_thresh=200):
+    """
+    Tao mask tu dong khi chua biet truoc mau qua - dung cho nen trang
+    dong nhat (vd dataset fruits-360). Neu anh nen phuc tap, nen dung
+    hsv_segment voi nguong H/S/V tu chinh thay vi ham nay.
+    """
     hsv, h, s, v = hsv_procession(img)
     mask_nen = cv2.inRange(hsv, (0, 0, v_thresh), (179, s_thresh, 255))
     mask = cv2.bitwise_not(mask_nen)
@@ -217,6 +221,7 @@ def auto_mask(img, s_thresh=30, v_thresh=200):
 
 
 def extract_all_features(img, mask=None):
+    """Ghep 3 vector dac trung (HSV + Histogram + Thong ke) thanh 1 vector."""
     if mask is None:
         mask = auto_mask(img)
 
@@ -227,6 +232,11 @@ def extract_all_features(img, mask=None):
 
 
 def build_reference_db(image_paths_by_label):
+    """
+    image_paths_by_label: dict {'tao': [path1, path2, ...], 'chuoi': [...], ...}
+    Tra ve: dict label -> list cac dict {'path', 'hsv', 'hist', 'stats'}
+            (co luu duong dan anh de sau nay giai thich "anh mau nao giong nhat")
+    """
     db_raw = {}
     for label, paths in image_paths_by_label.items():
         entries = []
@@ -243,6 +253,10 @@ def build_reference_db(image_paths_by_label):
 
 
 def compute_normalization_stats(db_raw):
+    """
+    Tinh mean/std toan cuc tren TAT CA anh mau, dung de chuan hoa (z-score)
+    truoc khi so khoang cach - tranh HSV/Histogram/Thong ke lech thang do.
+    """
     all_hsv, all_hist, all_stats = [], [], []
     for entries in db_raw.values():
         for e in entries:
@@ -253,6 +267,12 @@ def compute_normalization_stats(db_raw):
     all_hsv = np.array(all_hsv)
     all_hist = np.array(all_hist)
     all_stats = np.array(all_stats)
+
+    # QUAN TRONG: dung "san" (floor) cho std cua histogram thay vi +1e-6
+    # don thuan. Ly do: nhieu bin histogram co the LUON BANG 0 o TAT CA anh
+    # mau (vd khong anh mau nao co mau xanh la). Neu anh test lai co gia tri
+    # khac 0 dung bin do, z-score se bi chia cho so gan 0 -> ra so khong lo,
+    # lam sai lech toan bo khoang cach.
     hist_std = np.maximum(all_hist.std(axis=0), 0.01)
 
     return {
@@ -270,6 +290,7 @@ def _zscore(x, mean, std, clip=5.0):
 
 
 def build_normalized_db(db_raw, norm_params):
+    """Tra ve: dict label -> list cac dict {'path', 'vector'} (vector da chuan hoa)"""
     db_norm = {}
     for label, entries in db_raw.items():
         items = []
@@ -291,32 +312,59 @@ def _feat_test_vector(img, norm_params, mask=None):
     return np.concatenate([v_hsv, v_hist, v_stats])
 
 
-def classify_fruit(img, db_norm, norm_params, mask=None, k=3):
+def compute_class_centroids(db_norm):
+    """
+    Tinh vector "tam" (centroid) cho tung loai = trung binh cong cua tat ca
+    vector dac trung (da chuan hoa) cua cac anh mau thuoc loai do.
+    """
+    return {
+        label: np.mean([item["vector"] for item in items], axis=0)
+        for label, items in db_norm.items()
+    }
+
+
+def classify_fruit(img, db_norm, norm_params, mask=None):
+    """
+    THUAT TOAN: Minimum Distance to Centroid (khoang cach toi thieu den tam lop).
+    Khac KNN o cho: KHONG so voi tung anh mau rieng le, ma so voi 1 vector
+    DAI DIEN (centroid = trung binh cong) cua moi loai. Loai nao co centroid
+    gan anh can phan loai nhat se duoc chon.
+
+    Tra ve: nhan du doan, do tin cay (0-1, cang gan 1 cang chac chan),
+             bang khoang cach toi centroid tung loai
+    (Giu nguyen 3 gia tri tra ve de tuong thich voi evaluate.py)
+    """
     if mask is None:
         mask = auto_mask(img)
     feat_test = _feat_test_vector(img, norm_params, mask=mask)
 
-    all_dists = []
-    for label, items in db_norm.items():
-        for item in items:
-            dist = np.linalg.norm(feat_test - item["vector"])
-            all_dists.append((label, dist))
+    centroids = compute_class_centroids(db_norm)
+    dists = {label: float(np.linalg.norm(feat_test - c)) for label, c in centroids.items()}
 
-    all_dists.sort(key=lambda x: x[1])
-    top_k = all_dists[:k]
+    best_label = min(dists, key=dists.get)
 
-    votes = Counter(label for label, _ in top_k)
-    best_label = votes.most_common(1)[0][0]
-    confidence = votes[best_label] / k
+    # Do tin cay: dung softmax tren -khoang cach (khoang cach cang nho -> diem cang cao)
+    # Vd: 2 loai co khoang cach gan bang nhau -> tin cay ~50/50 (khong chac chan)
+    #     1 loai co khoang cach nho hon han cac loai con lai -> tin cay gan 100%
+    exp_scores = {lb: np.exp(-d) for lb, d in dists.items()}
+    total = sum(exp_scores.values())
+    confidence = exp_scores[best_label] / total if total > 0 else 0.0
 
-    label_avg_dist = {
-        label: float(np.mean([d for lb, d in all_dists if lb == label]))
-        for label in db_norm
-    }
-    return best_label, confidence, label_avg_dist
+    return best_label, confidence, dists
 
 
-def classify_fruit_detailed(img, db_norm, norm_params, mask=None, k=3):
+def classify_fruit_detailed(img, db_norm, norm_params, mask=None):
+    """
+    Giong classify_fruit (Minimum Distance to Centroid) nhung tra ve THEM
+    thong tin "vi sao" du doan the:
+        - khoang cach toi centroid tung loai
+        - ty trong dong gop cua tung ky thuat (HSV / Histogram / Thong ke)
+          vao khoang cach toi centroid CUA LOAI DUOC CHON
+        - anh mau thuc te giong nhat trong loai duoc chon (de minh hoa truc quan,
+          KHONG dung de quyet dinh - quyet dinh da dua tren centroid o tren)
+
+    Tra ve: best_label, confidence, dists_to_centroid, detail (dict)
+    """
     if mask is None:
         mask = auto_mask(img)
     feat_test = _feat_test_vector(img, norm_params, mask=mask)
@@ -324,42 +372,43 @@ def classify_fruit_detailed(img, db_norm, norm_params, mask=None, k=3):
     n_hsv = norm_params["n_hsv"]
     n_hist = norm_params["n_hist"]
 
-    all_matches = []
-    for label, items in db_norm.items():
-        for item in items:
-            v = item["vector"]
-            dist = float(np.linalg.norm(feat_test - v))
-            all_matches.append({"label": label, "path": item["path"], "dist": dist, "vector": v})
+    centroids = compute_class_centroids(db_norm)
+    dists = {}
+    breakdown_by_label = {}
+    for label, c in centroids.items():
+        dists[label] = float(np.linalg.norm(feat_test - c))
+        breakdown_by_label[label] = {
+            "hsv": float(np.linalg.norm(feat_test[:n_hsv] - c[:n_hsv])),
+            "hist": float(np.linalg.norm(feat_test[n_hsv:n_hsv + n_hist] - c[n_hsv:n_hsv + n_hist])),
+            "stats": float(np.linalg.norm(feat_test[n_hsv + n_hist:] - c[n_hsv + n_hist:])),
+        }
 
-    all_matches.sort(key=lambda x: x["dist"])
-    top_k = all_matches[:k]
+    best_label = min(dists, key=dists.get)
+    exp_scores = {lb: np.exp(-d) for lb, d in dists.items()}
+    total = sum(exp_scores.values())
+    confidence = exp_scores[best_label] / total if total > 0 else 0.0
 
-    votes = Counter(m["label"] for m in top_k)
-    best_label = votes.most_common(1)[0][0]
-    confidence = votes[best_label] / k
-
-    label_avg_dist = {
-        label: float(np.mean([m["dist"] for m in all_matches if m["label"] == label]))
-        for label in db_norm
-    }
-
-    nearest = all_matches[0]
-    v_near = nearest["vector"]
-    d_hsv = float(np.linalg.norm(feat_test[:n_hsv] - v_near[:n_hsv]))
-    d_hist = float(np.linalg.norm(feat_test[n_hsv:n_hsv + n_hist] - v_near[n_hsv:n_hsv + n_hist]))
-    d_stats = float(np.linalg.norm(feat_test[n_hsv + n_hist:] - v_near[n_hsv + n_hist:]))
+    # Tim anh mau THUC TE giong nhat TRONG loai duoc chon - chi de minh hoa
+    # truc quan cho nguoi dung xem, khong anh huong den ket qua phan loai
+    best_items = db_norm[best_label]
+    nearest = min(best_items, key=lambda it: float(np.linalg.norm(feat_test - it["vector"])))
+    nearest_dist = float(np.linalg.norm(feat_test - nearest["vector"]))
 
     detail = {
         "nearest_path": nearest["path"],
-        "nearest_label": nearest["label"],
-        "nearest_total_dist": nearest["dist"],
-        "breakdown": {"hsv": d_hsv, "hist": d_hist, "stats": d_stats},
-        "top_k": [{"label": m["label"], "path": m["path"], "dist": m["dist"]} for m in top_k],
+        "nearest_label": best_label,
+        "nearest_total_dist": nearest_dist,
+        "breakdown": breakdown_by_label[best_label],
+        "dists_to_centroid": dists,
     }
-    return best_label, confidence, label_avg_dist, detail
+    return best_label, confidence, dists, detail
 
 
 def build_pipeline_from_folder(root_folder, max_images_per_class=None):
+    """
+    root_folder co cau truc: root_folder/ten_loai/anh.jpg
+    Tra ve: db_norm, norm_params (dung truc tiep cho classify_fruit)
+    """
     valid_ext = (".jpg", ".jpeg", ".png", ".bmp")
     image_paths_by_label = {}
     for label in sorted(os.listdir(root_folder)):

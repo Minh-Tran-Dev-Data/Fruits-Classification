@@ -1,15 +1,13 @@
 import os
 import cv2
 import numpy as np
-
+import csv
 from classify_fruit import (
     build_reference_db,
     compute_normalization_stats,
     build_normalized_db,
     classify_fruit,
 )
-
-
 # ---------------------------------------------------------------------------
 # 1. Lay N anh tu 1 thu muc, bat dau tu vi tri "skip"
 #    (dung de tach TRAIN va TEST khong bi trung anh)
@@ -147,14 +145,11 @@ def plot_confusion_matrix(confusion, labels, save_path=None):
 # Vi du chay toan bo (sua duong dan cho khop du lieu cua ban)
 # ---------------------------------------------------------------------------
 if __name__ == "__main__":
-    base = "data"   # doi thanh duong dan dataset thuc te cua ban, vd:
-                    # "/kaggle/input/fruits/fruits-360_100x100/fruits-360/Training"
-
-    # Vi du cau truc: data/Apple, data/Banana, data/Orange (moi thu muc 1 loai)
+    base = "data"
     fruit_classes = ["Apple", "Banana", "Orange"]
 
-    image_paths_by_label = {}   # dung de TRAIN (xay ngan hang dac trung)
-    test_paths_by_label = {}    # dung de TEST (danh gia), KHONG trung voi train
+    image_paths_by_label = {'dataset/apple/anh-qua-tao.jpg','dataset/apple/tao_xanh.jpg'}
+    test_paths_by_label = {'dataset/apple/tao_xanh.jpg'}
 
     for cls in fruit_classes:
         folder = os.path.join(base, cls)
@@ -177,7 +172,7 @@ if __name__ == "__main__":
     per_class_accuracy(confusion, labels)
 
     # Xuat ket qua chi tiet ra CSV de dua vao bao cao
-    import csv
+
     with open("output/evaluation_report.csv", "w", newline="", encoding="utf-8-sig") as f:
         writer = csv.DictWriter(f, fieldnames=list(results[0].keys()))
         writer.writeheader()

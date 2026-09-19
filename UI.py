@@ -1,3 +1,22 @@
+# -*- coding: utf-8 -*-
+"""
+gui.py
+Giao dien Tkinter cho ung dung "Phan loai trai cay" (Chu de 6 - Project 1).
+
+CAU HINH DATASET: sua bien DATASET_DIR ben duoi cho khop noi ban dat du lieu.
+Cau truc bat buoc:
+    DATASET_DIR/
+        Apple/anh1.jpg, anh2.jpg, ...
+        Banana/anh1.jpg, ...
+        Orange/anh1.jpg, ...
+(moi thu muc con = 1 loai trai cay). Ung dung se TU DONG doc thu muc nay
+khi khoi dong, khong can chon qua hop thoai.
+
+THUAT TOAN PHAN LOAI: Minimum Distance to Centroid (khong dung KNN).
+Xem chi tiet trong processing.py (ham classify_fruit / classify_fruit_detailed).
+
+Chay: python main.py
+"""
 import os
 import csv
 import threading
@@ -10,18 +29,21 @@ from PIL import Image, ImageTk
 
 import processing as proc
 
+# ===========================================================================
+# CAU HINH - SUA O DAY
+# ===========================================================================
 DATASET_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "dataset")
 MAX_IMAGES_PER_CLASS = 20   # so anh mau toi da lay moi loai khi xay ngan hang dac trung
 
-APP_TITLE = "Phan Loai Trai Cay  |  HSV - Color Histogram - Thong Ke"
+APP_TITLE = "Phân Loại Trái Cây  |  Nhóm 6"
 CANVAS_W, CANVAS_H = 400, 400
 
 # Bang mau giao dien (fruit-themed)
 COLOR_BG = "#f4f6f2"
 COLOR_PANEL = "#ffffff"
-COLOR_PRIMARY = "#2e7d32"       # xanh la (nut chinh)
+COLOR_PRIMARY = "#2e7d32"
 COLOR_PRIMARY_DARK = "#1b5e20"
-COLOR_ACCENT = "#ef6c00"        # cam (nhan manh)
+COLOR_ACCENT = "#ef6c00"
 COLOR_TEXT = "#212121"
 COLOR_MUTED = "#6b6b6b"
 COLOR_BORDER = "#dcdfd9"
@@ -63,7 +85,6 @@ class FruitClassifierApp:
         self._build_layout()
         self._build_status_bar()
 
-        # Tu dong xay ngan hang dac trung tu DATASET_DIR khi khoi dong
         self.root.after(200, self.load_dataset_auto)
 
     # ------------------------------------------------------------- Style
@@ -78,12 +99,9 @@ class FruitClassifierApp:
         style.configure("TFrame", background=COLOR_BG)
         style.configure("Panel.TFrame", background=COLOR_PANEL)
         style.configure("TLabel", background=COLOR_BG, foreground=COLOR_TEXT)
-        style.configure("Panel.TLabel", background=COLOR_PANEL, foreground=COLOR_TEXT)
         style.configure("Header.TLabel", background=COLOR_BG, foreground=COLOR_PRIMARY_DARK,
                          font=(FONT_FAMILY, 11, "bold"))
         style.configure("Muted.TLabel", background=COLOR_BG, foreground=COLOR_MUTED,
-                         font=(FONT_FAMILY, 9))
-        style.configure("PanelMuted.TLabel", background=COLOR_PANEL, foreground=COLOR_MUTED,
                          font=(FONT_FAMILY, 9))
 
         style.configure("TLabelframe", background=COLOR_BG, bordercolor=COLOR_BORDER)
@@ -129,7 +147,7 @@ class FruitClassifierApp:
         header = tk.Frame(self.root, bg=COLOR_PRIMARY, height=54)
         header.pack(fill=tk.X, side=tk.TOP)
         header.pack_propagate(False)
-        tk.Label(header, text="Phan Loai Trai Cay", bg=COLOR_PRIMARY, fg="white",
+        tk.Label(header, text="Phân Loại Trái Cây", bg=COLOR_PRIMARY, fg="white",
                  font=(FONT_FAMILY, 15, "bold")).pack(side=tk.LEFT, padx=18)
         tk.Label(header, text="HSV Segmentation  -  Color Histogram  -  Thong ke",
                  bg=COLOR_PRIMARY, fg="#dff0da", font=(FONT_FAMILY, 10)).pack(side=tk.LEFT)
@@ -137,8 +155,7 @@ class FruitClassifierApp:
         main = ttk.Frame(self.root)
         main.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
 
-        # ---- trai: danh sach anh (batch) ----
-        left = ttk.Labelframe(main, text=" Danh sach anh (batch) ", width=210)
+        left = ttk.Labelframe(main, text=" Danh sách ảnh (batch) ", width=210)
         left.pack(side=tk.LEFT, fill=tk.Y, padx=(0, 8))
         self.listbox = tk.Listbox(left, width=26, height=32, bd=0, highlightthickness=0,
                                    selectbackground=COLOR_PRIMARY, activestyle="none",
@@ -146,20 +163,19 @@ class FruitClassifierApp:
         self.listbox.pack(fill=tk.Y, expand=True, padx=6, pady=6)
         self.listbox.bind("<<ListboxSelect>>", self._on_select_from_list)
 
-        # ---- giua: anh truoc/sau + ket qua ----
         center = ttk.Frame(main)
         center.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 8))
 
         img_frame = ttk.Frame(center)
         img_frame.pack(fill=tk.BOTH, expand=True)
 
-        before_box = ttk.Labelframe(img_frame, text=" Anh truoc xu ly ")
+        before_box = ttk.Labelframe(img_frame, text=" Ảnh trước xử lý  ")
         before_box.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 4))
         self.canvas_before = tk.Canvas(before_box, bg="#eceeea", width=CANVAS_W, height=CANVAS_H,
                                         highlightthickness=0)
         self.canvas_before.pack(fill=tk.BOTH, expand=True, padx=6, pady=6)
 
-        after_box = ttk.Labelframe(img_frame, text=" Anh sau xu ly / Ket qua ")
+        after_box = ttk.Labelframe(img_frame, text=" Ảnh sau xử lý ")
         after_box.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(4, 0))
         self.canvas_after = tk.Canvas(after_box, bg="#eceeea", width=CANVAS_W, height=CANVAS_H,
                                        highlightthickness=0)
@@ -173,17 +189,19 @@ class FruitClassifierApp:
         ttk.Button(self.video_ctrl, text="Stop", style="Secondary.TButton",
                    command=self.video_stop).pack(side=tk.LEFT, padx=3, pady=4)
 
-        result_box = ttk.Labelframe(center, text=" Ket qua ")
+        result_box = ttk.Labelframe(center, text=" Kết quả ")
         result_box.pack(fill=tk.BOTH, expand=False, pady=(8, 0))
+        # state=tk.DISABLED: khoa hoan toan viec go/xoa chu thu cong cua nguoi dung.
+        # Moi luc muon ghi noi dung moi, code phai tam bat (NORMAL) -> ghi -> khoa lai (DISABLED),
+        # xem cac ham _result_clear() / _result_write() / _result_lock() ben duoi.
         self.txt_result = tk.Text(result_box, height=11, font=("Consolas", 9), bd=0,
                                    bg=COLOR_PANEL, fg=COLOR_TEXT, padx=8, pady=6,
-                                   highlightthickness=0)
+                                   highlightthickness=0, state=tk.DISABLED, cursor="arrow")
         self.txt_result.pack(fill=tk.BOTH, expand=True, padx=4, pady=4)
         self.txt_result.tag_configure("h1", font=(FONT_FAMILY, 10, "bold"), foreground=COLOR_PRIMARY_DARK)
         self.txt_result.tag_configure("accent", foreground=COLOR_ACCENT, font=("Consolas", 9, "bold"))
         self.txt_result.tag_configure("muted", foreground=COLOR_MUTED)
 
-        # ---- phai: dieu khien (tabs) ----
         right = ttk.Frame(main, width=360)
         right.pack(side=tk.LEFT, fill=tk.Y)
 
@@ -196,7 +214,23 @@ class FruitClassifierApp:
         self._build_tab_classify(notebook)
         self._build_tab_batch(notebook)
 
-    # ---- Tab 1: HSV Segmentation ----
+    # ------------------------------------------------------- Ket qua (read-only helpers)
+    def _result_clear(self):
+
+        self.txt_result.config(state=tk.NORMAL)
+        self.txt_result.delete("1.0", tk.END)
+
+    def _result_write(self, text, tag=None):
+
+        if tag:
+            self.txt_result.insert(tk.END, text, tag)
+        else:
+            self.txt_result.insert(tk.END, text)
+
+    def _result_lock(self):
+        self.txt_result.config(state=tk.DISABLED)
+
+    # ---- Tab: HSV Segmentation ----
     def _build_tab_hsv(self, notebook):
         tab = ttk.Frame(notebook)
         notebook.add(tab, text="HSV")
@@ -248,7 +282,6 @@ class FruitClassifierApp:
         scale.pack(side=tk.LEFT, fill=tk.X, expand=True)
         return var
 
-    # ---- Tab 2: Color Histogram ----
     def _build_tab_histogram(self, notebook):
         tab = ttk.Frame(notebook)
         notebook.add(tab, text="Histogram")
@@ -270,7 +303,6 @@ class FruitClassifierApp:
         self.hist_canvas_frame = ttk.Frame(tab)
         self.hist_canvas_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=8)
 
-    # ---- Tab 3: Thong ke ----
     def _build_tab_stats(self, notebook):
         tab = ttk.Frame(notebook)
         notebook.add(tab, text="Thong ke")
@@ -282,13 +314,12 @@ class FruitClassifierApp:
         ttk.Button(tab, text="Tinh thong ke chi tiet", style="Accent.TButton",
                    command=self.run_statistics).pack(fill=tk.X, padx=10, pady=4)
 
-    # ---- Tab 4: Phan loai ----
     def _build_tab_classify(self, notebook):
         tab = ttk.Frame(notebook)
-        notebook.add(tab, text="Phan loai")
+        notebook.add(tab, text="Phân Loại")
 
-        ttk.Label(tab, text="Ngan hang dac trung", style="Header.TLabel").pack(anchor="w", padx=10, pady=(12, 4))
-        self.classify_db_status = ttk.Label(tab, text="Dang tai...", style="Muted.TLabel",
+        ttk.Label(tab, text="Dữ liệu", style="Header.TLabel").pack(anchor="w", padx=10, pady=(12, 4))
+        self.classify_db_status = ttk.Label(tab, text="Loading ...", style="Muted.TLabel",
                                              wraplength=310, justify=tk.LEFT)
         self.classify_db_status.pack(anchor="w", padx=10, pady=(0, 6))
 
@@ -296,35 +327,36 @@ class FruitClassifierApp:
                    command=self.load_dataset_auto).pack(anchor="w", padx=10, pady=(0, 10))
 
         ttk.Separator(tab).pack(fill=tk.X, padx=10, pady=6)
+        ttk.Label(
+            tab,
+            text="Thuat toan: Minimum Distance to Centroid.\n"
+            ,style="Muted.TLabel", justify=tk.LEFT
+        ).pack(anchor="w", padx=10, pady=(4, 10))
 
-        ttk.Label(tab, text="So lang gieng gan nhat (k)", style="Muted.TLabel").pack(anchor="w", padx=10, pady=(4, 2))
-        self.classify_k = tk.IntVar(value=3)
-        ttk.Spinbox(tab, from_=1, to=9, textvariable=self.classify_k, width=10).pack(padx=10, anchor="w")
-
-        ttk.Button(tab, text="Phan loai anh hien tai", style="Accent.TButton",
-                   command=self.classify_current_image).pack(fill=tk.X, padx=10, pady=(14, 10))
+        ttk.Button(tab, text="Phân loại  ", style="Accent.TButton",
+                   command=self.classify_current_image).pack(fill=tk.X, padx=10, pady=(4, 10))
 
         ttk.Separator(tab).pack(fill=tk.X, padx=10, pady=6)
-        ttk.Label(tab, text="Giai thich du doan", style="Header.TLabel").pack(anchor="w", padx=10, pady=(4, 4))
+        ttk.Label(tab, text="Giải thích dự đoán", style="Header.TLabel").pack(anchor="w", padx=10, pady=(4, 4))
 
         explain_row = ttk.Frame(tab)
         explain_row.pack(fill=tk.X, padx=10)
         self.nearest_thumb = tk.Canvas(explain_row, width=110, height=110, bg="#eceeea",
                                         highlightthickness=1, highlightbackground=COLOR_BORDER)
         self.nearest_thumb.pack(side=tk.LEFT, pady=4)
-        self.nearest_label_var = tk.StringVar(value="Chua co ket qua")
+        self.nearest_label_var = tk.StringVar(value="Chưa có kết quả")
         ttk.Label(explain_row, textvariable=self.nearest_label_var, style="Muted.TLabel",
                   wraplength=190, justify=tk.LEFT).pack(side=tk.LEFT, padx=8)
 
         self.detail_canvas_frame = ttk.Frame(tab)
         self.detail_canvas_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=8)
 
-    # ---- Tab 5: Batch ----
+    # ---- Tab: Batch ----
     def _build_tab_batch(self, notebook):
         tab = ttk.Frame(notebook)
-        notebook.add(tab, text="Hang loat")
+        notebook.add(tab, text="Hàng loạt")
 
-        ttk.Label(tab, text="Xu ly hang loat", style="Header.TLabel").pack(anchor="w", padx=10, pady=(12, 6))
+        ttk.Label(tab, text="Xử lý hàng loại ", style="Header.TLabel").pack(anchor="w", padx=10, pady=(12, 6))
         ttk.Label(tab, text="Xu ly toan bo anh trong thu muc da mo\n(File > Mo thu muc anh), dung nguong HSV\ndang chinh o tab HSV, xuat CSV.",
                   style="Muted.TLabel", justify=tk.LEFT).pack(anchor="w", padx=10, pady=(0, 10))
         ttk.Button(tab, text="Chay xu ly hang loat...", style="Accent.TButton",
@@ -352,6 +384,7 @@ class FruitClassifierApp:
             "Gioi thieu",
             "Chu de 6 - Project 1: Phan loai trai cay\n"
             "Ky thuat: HSV Segmentation, Color Histogram, Thong ke\n"
+            "Thuat toan phan loai: Minimum Distance to Centroid\n"
             "Mon hoc: Xu ly anh"
         )
 
@@ -421,7 +454,8 @@ class FruitClassifierApp:
         self.listbox.delete(0, tk.END)
         self._show_image(self.canvas_before, img)
         self._show_image(self.canvas_after, img)
-        self.txt_result.delete("1.0", tk.END)
+        self._result_clear()
+        self._result_lock()
         self._set_status(f"Da mo anh: {os.path.basename(path)} ({img.shape[1]}x{img.shape[0]})")
 
     def open_folder(self):
@@ -546,12 +580,15 @@ class FruitClassifierApp:
         if not silent:
             feat = proc.extract_hsv(self.original_rgb, mask=mask)
             pct = 100.0 * np.count_nonzero(mask) / mask.size
-            self.txt_result.delete("1.0", tk.END)
-            self.txt_result.insert(tk.END, "DAC TRUNG HSV (mean / std)\n", "h1")
-            self.txt_result.insert(tk.END, f"Ty le vung phat hien: {pct:.2f}%\n\n", "accent")
-            self.txt_result.insert(tk.END, f"mean_H={feat[0]:.2f}   std_H={feat[1]:.2f}\n")
-            self.txt_result.insert(tk.END, f"mean_S={feat[2]:.2f}   std_S={feat[3]:.2f}\n")
-            self.txt_result.insert(tk.END, f"mean_V={feat[4]:.2f}   std_V={feat[5]:.2f}\n")
+
+            self._result_clear()
+            self._result_write("DAC TRUNG HSV (mean / std)\n", "h1")
+            self._result_write(f"Ty le vung phat hien: {pct:.2f}%\n\n", "accent")
+            self._result_write(f"mean_H={feat[0]:.2f}   std_H={feat[1]:.2f}\n")
+            self._result_write(f"mean_S={feat[2]:.2f}   std_S={feat[3]:.2f}\n")
+            self._result_write(f"mean_V={feat[4]:.2f}   std_V={feat[5]:.2f}\n")
+            self._result_lock()
+
             self._set_status(f"Da phan doan HSV. Dien tich khop: {pct:.2f}%")
 
     # -------------------------------------------------------------- Tab Histogram
@@ -591,14 +628,17 @@ class FruitClassifierApp:
             return
         mask = self.current_mask
         stats, boxes = proc.compute_full_statistics(self.original_rgb, mask=mask)
-        self.txt_result.delete("1.0", tk.END)
-        self.txt_result.insert(tk.END, "THONG KE ANH\n", "h1")
+
+        self._result_clear()
+        self._result_write("THONG KE ANH\n", "h1")
         for k, v in stats.items():
-            self.txt_result.insert(tk.END, f"{k:28s}: {v}\n")
+            self._result_write(f"{k:28s}: {v}\n")
         if boxes:
-            self.txt_result.insert(tk.END, f"\nBounding boxes doi tuong ({len(boxes)}):\n", "accent")
+            self._result_write(f"\nBounding boxes doi tuong ({len(boxes)}):\n", "accent")
             for i, b in enumerate(boxes, 1):
-                self.txt_result.insert(tk.END, f"  #{i}: x={b[0]}, y={b[1]}, w={b[2]}, h={b[3]}\n")
+                self._result_write(f"  #{i}: x={b[0]}, y={b[1]}, w={b[2]}, h={b[3]}\n")
+        self._result_lock()
+
         self._set_status("Da tinh thong ke.")
 
     # -------------------------------------------------------------- Tab Phan loai
@@ -613,24 +653,22 @@ class FruitClassifierApp:
                 f"roi bam 'Tai lai du lieu mau'.")
             return
 
-        k = int(self.classify_k.get())
-        label, confidence, dist_table, detail = proc.classify_fruit_detailed(
-            self.original_rgb, self.db_norm, self.norm_params, k=k)
+        label, confidence, dists, detail = proc.classify_fruit_detailed(
+            self.original_rgb, self.db_norm, self.norm_params)
 
-        # ---- Text ket qua ----
-        self.txt_result.delete("1.0", tk.END)
-        self.txt_result.insert(tk.END, "KET QUA PHAN LOAI\n", "h1")
-        self.txt_result.insert(tk.END, f"Du doan: {label}\n", "accent")
-        self.txt_result.insert(tk.END, f"Do tin cay (trong {k} lang gieng gan nhat): {confidence*100:.0f}%\n\n")
+        self._result_clear()
+        self._result_write("KET QUA PHAN LOAI\n", "h1")
+        self._result_write(f"Du doan: {label}\n", "accent")
+        self._result_write(f"Do tin cay: {confidence*100:.1f}%\n\n")
 
-        self.txt_result.insert(tk.END, "Khoang cach trung binh toi tung loai:\n", "h1")
-        for lb, d in sorted(dist_table.items(), key=lambda x: x[1]):
-            self.txt_result.insert(tk.END, f"  {lb:<15s}: {d:.3f}\n")
+        self._result_write("Khoang cach toi TAM (centroid) tung loai:\n", "h1")
+        for lb, d in sorted(dists.items(), key=lambda x: x[1]):
+            danh_dau = "  <-- gan nhat" if lb == label else ""
+            self._result_write(f"  {lb:<15s}: {d:.3f}{danh_dau}\n")
 
-        self.txt_result.insert(tk.END, "\nTop lang gieng gan nhat (dung de vote):\n", "h1")
-        for m in detail["top_k"]:
-            self.txt_result.insert(tk.END, f"  [{m['label']:<10s}] {os.path.basename(m['path'])}  "
-                                             f"(khoang cach {m['dist']:.3f})\n")
+        self._result_write(f"\nAnh mau minh hoa (giong nhat trong loai '{label}'):\n", "h1")
+        self._result_write(f"  {os.path.basename(detail['nearest_path'])}\n")
+        self._result_lock()
 
         # ---- Anh mau giong nhat (thumbnail) ----
         near_img = self._load_image_rgb(detail["nearest_path"])
@@ -644,13 +682,12 @@ class FruitClassifierApp:
 
         self.nearest_label_var.set(
             f"Anh mau giong nhat:\n{os.path.basename(detail['nearest_path'])}\n"
-            f"(loai: {detail['nearest_label']})\n"
-            f"Tong khoang cach: {detail['nearest_total_dist']:.3f}")
+            f"(loai: {detail['nearest_label']})")
 
-        # ---- Bieu do dong gop tung ky thuat ----
+        # ---- Bieu do dong gop tung ky thuat toi centroid loai thang ----
         self._draw_breakdown_chart(detail["breakdown"])
 
-        self._set_status(f"Phan loai: {label} (tin cay {confidence*100:.0f}%)")
+        self._set_status(f"Phan loai: {label} (tin cay {confidence*100:.1f}%)")
 
     def _draw_breakdown_chart(self, breakdown):
         import matplotlib
@@ -664,7 +701,7 @@ class FruitClassifierApp:
 
         fig, ax = plt.subplots(figsize=(3.2, 2.6), dpi=100)
         bars = ax.bar(names, values, color=colors)
-        ax.set_title("Dong gop khoang cach\ntoi anh mau giong nhat", fontsize=9)
+        ax.set_title("Dong gop khoang cach\ntoi tam (centroid) loai thang", fontsize=9)
         ax.set_ylabel("Khoang cach", fontsize=8)
         ax.tick_params(labelsize=8)
         for b, v in zip(bars, values):
